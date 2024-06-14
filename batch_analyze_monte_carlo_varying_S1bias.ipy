@@ -1,0 +1,154 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Adjusted graphs from Jan Kirchner to simplify repeating graphs for manuscript
+JaeAnn Dwulet
+"""
+#%%
+# import sys
+# sys.path.append('/Users/dwuletj/Documents/GitHub_Gjorgjieva/Multimodal/')
+# print(sys.path)
+
+import numpy , os , matplotlib , random, pathlib, re
+from scipy import stats
+import pylab as plt
+import matplotlib.cm as cm
+
+import tools.biased_weights
+#reload(tools.biased_weights)
+from tools.biased_weights import biased_weights
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+
+matplotlib.rcParams['pdf.fonttype'] = 42
+matplotlib.rcParams['ps.fonttype'] = 42
+
+# defining things for the figures
+SMALL_SIZE = 12
+MEDIUM_SIZE = 14.
+BIGGER_SIZE = 16
+
+plt.rc('font',  size=SMALL_SIZE)          # controls default text sizes
+plt.rc('axes',  titlesize=SMALL_SIZE)     # fontsize of the axes title
+plt.rc('axes',  labelsize=MEDIUM_SIZE)    # fontsize of the x and y labels
+plt.rc('xtick',  labelsize=SMALL_SIZE)    # fontsize of the tick labels
+plt.rc('ytick',  labelsize=SMALL_SIZE)    # fontsize of the tick labels
+plt.rc('legend',  fontsize=SMALL_SIZE)    # legend fontsize
+plt.rc('figure',  titlesize=BIGGER_SIZE)  # fontsize of the figure title
+
+#%%
+N = 50
+V1template = biased_weights(N, [0 , 0], 1, 4)
+S1template = biased_weights(N, [0 , 0], 1, 4)
+
+%matplotlib inline
+accSTATSList = []
+
+pathtodata = pathlib.Path('simulations/S1_biaspoint05topoint6_500000tp')
+#pathtodata = pathlib.Path('simulations/Mainsimulations/S1_bias/')
+
+for foldername in os.listdir(pathtodata):
+    if foldername != '.DS_Store':
+        for filename in os.listdir(pathtodata / foldername):
+            if filename.endswith(".pickle"): #  and (numpy.random.rand() < 0.05)
+                print(pathtodata / foldername / filename)
+                time_vec_list, W_vec_v1, W_vec_s1 , prms , mats , vec_v1 , vec_s1 , vec_rl = numpy.load(os.path.join(os.path.join(pathtodata, foldername) , filename) , allow_pickle=True)
+
+                cMat = numpy.corrcoef(mats['W_s1'].ravel() , mats['W_v1'].ravel()) #correlation between s1 and v1 - calculate alignment
+                cMatV1 = numpy.corrcoef(mats['W_v1'].ravel() , V1template.ravel()) #correlation between v1 and perfect template - calculate topography
+                cMatS1 = numpy.corrcoef(mats['W_s1'].ravel() , S1template.ravel()) #correlation between s1 and perfect template - calculate topography
+                
+                bimodal = ((mats['W_s1'] > 0.5).sum(axis=1) > 0) * ((mats['W_v1'] > 0.5).sum(axis=1) > 0)
+                accSTATSList.append((prms['corr_thres'] , prms['spatio_temp_corr'] , cMat[0,1] , cMatV1[0,1] , cMatS1[0,1], bimodal.mean(), prms['bias_s1'])) #, mats['W_v1'] , mats['W_s1']) )
+
+accSTATS = numpy.array(accSTATSList)
+#accSTATS = numpy.nan_to_num(accSTATS , nan = 1)
+numpy.savetxt('outputS1bias.csv', accSTATS, delimiter=',', fmt='%.2f')
+#%% topography vs s1 bias
+
+plt.figure(figsize=(4,4))
+ax = plt.subplot()
+sc = plt.scatter(accSTATS[:,3] , accSTATS[: , 4] , c=accSTATS[: , 6] ,cmap=cm.magma ,s=75, vmin = 0.0 , vmax = 0.4 )
+plt.xlim([0.0 , 1])
+plt.xticks([ 0.0 , 0.5 , 1.0])
+plt.ylim([0.0 , 1.0])
+plt.yticks([0. , 0.5 , 1.0])
+plt.ylabel('S1 topography')
+plt.xlabel('V1 topography')
+
+ax=plt.gca()
+divider = make_axes_locatable(ax)
+cax = divider.append_axes("right", size="5%", pad=0.05)
+plt.colorbar(sc, cax=cax)
+plt.savefig('raw_out/RF_quality.pdf', bbox_inches='tight')
+
+# %%topography vs s1 bias with bimodal cells as color
+plt.figure(figsize=(4,4))
+ax = plt.subplot()
+sc = plt.scatter(accSTATS[:,3] , accSTATS[: , 4] , c=accSTATS[: , 5] ,cmap="cool" ,s=75, vmin = 0.0 , vmax = 1 )
+plt.xlim([0.0 , 1])
+plt.xticks([ 0.0 , 0.5 , 1.0])
+plt.ylim([0.0 , 1.0])
+plt.yticks([0. , 0.5 , 1.0])
+plt.ylabel('S1 topography')
+plt.xlabel('V1 topography')
+cbar = plt.colorbar(sc)
+cbar.set_label('% bimodal', fontname="Arial")
+cbar.ax.yaxis.label.set_rotation(270)
+cbar.ax.yaxis.label.set_verticalalignment('center')
+
+plt.savefig('raw_out/S1V1topo_bimodal_S1biassims.pdf', bbox_inches='tight')
+
+# %% topography vs s1 bias with alignment cells as color
+plt.figure(figsize=(4,4))
+ax = plt.subplot()
+sc = plt.scatter(accSTATS[:,3] , accSTATS[: , 4] , c=accSTATS[: , 2] ,cmap="autumn" ,s=75, vmin = 0.0 , vmax = 1 )
+plt.xlim([0.0 , 1])
+plt.xticks([ 0.0 , 0.5 , 1.0])
+plt.ylim([0.0 , 1.0])
+plt.yticks([0. , 0.5 , 1.0])
+plt.ylabel('S1 topography')
+plt.xlabel('V1 topography')
+
+cbar = plt.colorbar(sc)
+cbar.set_label('Alignment',fontname="Arial")
+cbar.ax.yaxis.label.set_rotation(270)
+cbar.ax.yaxis.label.set_verticalalignment('center')
+plt.savefig('raw_out/S1V1topo_alignment_S1biassims.pdf', bbox_inches='tight')
+
+
+#%% create bimodal vs S1bias graph fig. 3G
+
+plt.figure(figsize=(4,4))
+sc = plt.scatter(accSTATS[: , 6], accSTATS[: , 5], c='Grey')
+
+plt.xlim([0 , 0.6])
+plt.xticks([0.0 , 0.6])
+plt.ylim([0.0 , 1.0])
+plt.yticks([0. , 0.5 , 1.0])
+plt.ylabel('Fraction bimodal')
+plt.xlabel('S1 bias')
+plt.savefig('raw_out/S1bias_fraction_bimodal.pdf', bbox_inches='tight')
+
+#%% Alignment vs S1bias graph
+
+plt.figure(figsize=(4,4))
+sc = plt.scatter(accSTATS[:,6] , accSTATS[: , 2], c='Grey')
+
+plt.xlim([0 , 0.6])
+plt.xticks([0.0 , 0.6])
+plt.ylim([0 , 1.0])
+plt.yticks([0 ,  1.0])
+plt.ylabel('Alignment')
+plt.xlabel('S1 bias')
+plt.savefig('raw_out/S1bias_alignment.pdf', bbox_inches='tight')
+
+# %%
+plt.figure(figsize=(4,4))
+sc = plt.scatter(accSTATS[:,5] , accSTATS[: , 2], c='Grey')
+
+
+plt.xlabel('Fraction bimodal')
+plt.ylabel('Alignment')
+plt.savefig('raw_out/S1bias_alignment.pdf', bbox_inches='tight')
+
+# %%
